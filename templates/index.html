@@ -1,4 +1,4 @@
-{% if idToken %}
+{% if id_token %}
 	<style>
       table, th, td {
           border: 1px solid;
@@ -20,17 +20,13 @@
 		<tr>
 			<th>ID Token</th>
 			<td>
-				<pre>
-				{{ idToken }}
-				</pre>
+				<pre>{{ id_token }}</pre>
 			</td>
 		</tr>
 		<tr>
-			<th>Auth Token</th>
+			<th>OAuth Token</th>
 			<td>
-				<pre>
-				{{ authToken }}
-				</pre>
+				<pre>{{ oa_token }}</pre>
 			</td>
 		</tr>
 	</table>
