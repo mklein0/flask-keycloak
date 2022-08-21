@@ -6,9 +6,6 @@ import certifi
 import flask
 import requests
 
-from flask import Flask, url_for, session
-from flask import render_template, redirect
-
 from authlib.integrations.flask_client import OAuth, OAuthError
 
 # from authlib.oauth2.rfc6749 import OAuth2Token
@@ -16,7 +13,7 @@ from authlib.integrations.flask_client import OAuth, OAuthError
 
 print("Using cacerts from " + certifi.where())
 
-app = Flask(__name__)
+app = flask.Flask(__name__)
 app.secret_key = '!secret'
 
 issuer = os.getenv('ISSUER', 'https://id.acme.test:8443/auth/realms/acme-demo')
@@ -25,7 +22,7 @@ clientSecret = os.getenv('CLIENT_SECRET', 'lkkoQDUdJUqYDHXZBVDodw2ocvqJEflP')
 oidcDiscoveryUrl = f'{issuer}/.well-known/openid-configuration'
 
 # We do not handle OAuth2 tokens separate from authentication server, so no need to hold them
-# beyond the session.
+# beyond the flask.session.
 
 # def update_token(
 #         name,
@@ -65,11 +62,11 @@ oauth.register(
 
 
 def fetch_token():
-    if 'authToken' not in session:
+    if 'authToken' not in flask.session:
         return None
 
     now = time.time()
-    authToken = session['authToken']
+    authToken = flask.session['authToken']
     # get current access token
     # check if access token is still valid
     # if current access token is valid, use token for request
@@ -91,9 +88,9 @@ def fetch_token():
             clear_session()
             return None
 
-        session['authToken'].update(new_response)
-        # Mark session tampered with.
-        session.modified = session.accessed = True
+        flask.session['authToken'].update(new_response)
+        # Mark flask.session tampered with.
+        flask.session.modified = flask.session.accessed = True
 
     access_token = authToken['access_token']
     return access_token
@@ -101,13 +98,13 @@ def fetch_token():
 
 @app.route('/')
 def index():
-    user = session.get('user')
+    user = flask.session.get('user')
     prettyIdToken = None
     prettyAuthToken = None
     if user is not None:
         prettyIdToken = json.dumps(user, sort_keys=True, indent=4)
-        prettyAuthToken = json.dumps(session['authToken'], sort_keys=True, indent=4)
-    return render_template(
+        prettyAuthToken = json.dumps(flask.session['authToken'], sort_keys=True, indent=4)
+    return flask.render_template(
         'index.html',
         idToken=prettyIdToken,
         authToken=prettyAuthToken,
@@ -117,7 +114,7 @@ def index():
 
 @app.route('/login')
 def login():
-    redirect_uri = url_for('auth', _external=True)
+    redirect_uri = flask.url_for('auth', _external=True)
     return oauth.keycloak.authorize_redirect(redirect_uri)
 
 
@@ -128,10 +125,10 @@ def auth():
     # userinfo = oauth.keycloak.userinfo(request)
     idToken = oauth.keycloak.parse_id_token(authToken)
     if idToken:
-        session['user'] = idToken
-        session['authToken'] = authToken
+        flask.session['user'] = idToken
+        flask.session['authToken'] = authToken
 
-    return redirect('/')
+    return flask.redirect('/')
 
 
 @app.route('/api')
@@ -155,13 +152,13 @@ def api():
 
 def clear_session():
     # type: (...) -> None
-    session.pop('user', None)
-    session.pop('authToken', None)
+    flask.session.pop('user', None)
+    flask.session.pop('authToken', None)
 
 
 @app.route('/logout')
 def logout():
-    authToken = session.get('authToken')
+    authToken = flask.session.get('authToken')
 
     if authToken is not None:
         # propagate logout to Keycloak
@@ -177,7 +174,7 @@ def logout():
             })
 
     clear_session()
-    return redirect('/')
+    return flask.redirect('/')
 
 
 if __name__ == '__main__':
