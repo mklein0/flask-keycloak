@@ -1,8 +1,40 @@
 {% if idToken %}
-<pre>
-{{ idToken  }}
-</pre>
-<a href="/logout">logout</a>
+	<style>
+      table, th, td {
+          border: 1px solid;
+      }
+
+      th, td {
+          padding: 1em;
+          text-align: left;
+          vertical-align: text-top;
+      }
+	</style>
+	<table>
+		<tr>
+			<th>Now</th>
+			<td>
+				{{ now }}
+			</td>
+		</tr>
+		<tr>
+			<th>ID Token</th>
+			<td>
+				<pre>
+				{{ idToken }}
+				</pre>
+			</td>
+		</tr>
+		<tr>
+			<th>Auth Token</th>
+			<td>
+				<pre>
+				{{ authToken }}
+				</pre>
+			</td>
+		</tr>
+	</table>
+	<a href="{{ url_for('logout') }}">logout</a>
 {% else %}
-<a href="/login">login</a>
+	<a href="{{ url_for('login') }}">login</a>
 {% endif %}

@@ -1,12 +1,18 @@
+import time
 import json
 import os
 
 import certifi
+import flask
 import requests
-from authlib.oauth2.rfc6749 import OAuth2Token
+
 from flask import Flask, url_for, session
 from flask import render_template, redirect
-from authlib.integrations.flask_client import OAuth, token_update
+
+from authlib.integrations.flask_client import OAuth, OAuthError
+
+# from authlib.oauth2.rfc6749 import OAuth2Token
+# from authlib.integrations.flask_client import token_update
 
 print("Using cacerts from " + certifi.where())
 
@@ -18,25 +24,34 @@ clientId = os.getenv('CLIENT_ID', 'flask-webapp')
 clientSecret = os.getenv('CLIENT_SECRET', 'lkkoQDUdJUqYDHXZBVDodw2ocvqJEflP')
 oidcDiscoveryUrl = f'{issuer}/.well-known/openid-configuration'
 
+# We do not handle OAuth2 tokens separate from authentication server, so no need to hold them
+# beyond the session.
 
-# def update_token(name, token, refresh_token=None, access_token=None):
-#    if refresh_token:
-#        item = OAuth2Token.find(name=name, refresh_token=refresh_token)
-#    elif access_token:
-#        item = OAuth2Token.find(name=name, access_token=access_token)
-#    else:
-#        return
+# def update_token(
+#         name,
+#         token,
+#         refresh_token=None,
+#         access_token=None
+# ):
+#     import pdb; pdb.set_trace()
+#     if refresh_token:
+#         item = OAuth2Token.find(name=name, refresh_token=refresh_token)
+#     elif access_token:
+#         item = OAuth2Token.find(name=name, access_token=access_token)
+#     else:
+#         return
 #
-#    # update old token
-#    item.access_token = token['access_token']
-#    item.refresh_token = token.get('refresh_token')
-#    item.expires_at = token['expires_at']
-#    item.save()
+#     # update old token
+#     item.access_token = token['access_token']
+#     item.refresh_token = token.get('refresh_token')
+#     item.expires_at = token['expires_at']
+#     item.save()
 
 
-oauth = OAuth(app=app
-              #              , update_token=update_token
-              )
+oauth = OAuth(
+    app=app,
+    # update_token=update_token,
+)
 oauth.register(
     name='keycloak',
     client_id=clientId,
@@ -49,13 +64,55 @@ oauth.register(
 )
 
 
+def fetch_token():
+    if 'authToken' not in session:
+        return None
+
+    now = time.time()
+    authToken = session['authToken']
+    # get current access token
+    # check if access token is still valid
+    # if current access token is valid, use token for request
+    # if current access token is invalid, use refresh token to obtain new access token
+    # if successfully, update current access token, current refresh token
+    # if current access token is valid, use token for request
+
+    if authToken['expires_at'] - 2 < now:  # refresh 2 seconds before access token expires
+        try:
+            new_response = oauth.keycloak.fetch_access_token(
+                refresh_token=authToken['refresh_token'],
+                grant_type='refresh_token'
+            )
+
+        except OAuthError as e:
+            if e.error != 'invalid_grant':
+                raise
+
+            clear_session()
+            return None
+
+        session['authToken'].update(new_response)
+        # Mark session tampered with.
+        session.modified = session.accessed = True
+
+    access_token = authToken['access_token']
+    return access_token
+
+
 @app.route('/')
 def index():
     user = session.get('user')
     prettyIdToken = None
+    prettyAuthToken = None
     if user is not None:
         prettyIdToken = json.dumps(user, sort_keys=True, indent=4)
-    return render_template('index.html', idToken=prettyIdToken)
+        prettyAuthToken = json.dumps(session['authToken'], sort_keys=True, indent=4)
+    return render_template(
+        'index.html',
+        idToken=prettyIdToken,
+        authToken=prettyAuthToken,
+        now=int(time.time()),
+    )
 
 
 @app.route('/login')
@@ -66,59 +123,60 @@ def login():
 
 @app.route('/auth')
 def auth():
-    tokenResponse = oauth.keycloak.authorize_access_token()
+    authToken = oauth.keycloak.authorize_access_token()
 
-    #userinfo = oauth.keycloak.userinfo(request)
-    idToken = oauth.keycloak.parse_id_token(tokenResponse)
-
+    # userinfo = oauth.keycloak.userinfo(request)
+    idToken = oauth.keycloak.parse_id_token(authToken)
     if idToken:
         session['user'] = idToken
-        session['tokenResponse'] = tokenResponse
+        session['authToken'] = authToken
 
     return redirect('/')
 
 
 @app.route('/api')
 def api():
-    if not 'tokenResponse' in session:
-        return "Unauthorized", 401
-    
-    # the following should be much easier...
-    # see https://docs.authlib.org/en/latest/client/frameworks.html#auto-update-token
-    tokenResponse = session['tokenResponse']
-    # get current access token
-    # check if access token is still valid
-    # if current access token is valid, use token for request
-    # if current access token is invalid, use refresh token to obtain new access token
-    # if sucessfull, update current access token, current refresh token
-    # if current access token is valid, use token for request
+    """
+    Use logged in user's access token to query user info
+    """
+    access_token = fetch_token()
+    if access_token is None:
+        # User is not authenticated
+        raise flask.abort(401)
 
-    # call userinfo endpoint as an example
-    access_token = tokenResponse['access_token']
     userInfoEndpoint = f'{issuer}/protocol/openid-connect/userinfo'
-    userInfoResponse = requests.post(userInfoEndpoint,
-                                     headers={'Authorization': f'Bearer {access_token}', 'Accept': 'application/json'})
+    userInfoResponse = requests.post(
+        userInfoEndpoint,
+        headers={'Authorization': f'Bearer {access_token}', 'Accept': 'application/json'}
+    )
 
     return userInfoResponse.text, 200
 
 
+def clear_session():
+    # type: (...) -> None
+    session.pop('user', None)
+    session.pop('authToken', None)
+
+
 @app.route('/logout')
 def logout():
-    tokenResponse = session.get('tokenResponse')
+    authToken = session.get('authToken')
 
-    if tokenResponse is not None:
+    if authToken is not None:
         # propagate logout to Keycloak
-        refreshToken = tokenResponse['refresh_token']
+        refreshToken = authToken['refresh_token']
         endSessionEndpoint = f'{issuer}/protocol/openid-connect/logout'
 
-        requests.post(endSessionEndpoint, data={
-            "client_id": clientId,
-            "client_secret": clientSecret,
-            "refresh_token": refreshToken,
-        })
+        requests.post(
+            endSessionEndpoint,
+            data={
+                "client_id": clientId,
+                "client_secret": clientSecret,
+                "refresh_token": refreshToken,
+            })
 
-    session.pop('user', None)
-    session.pop('tokenResponse', None)
+    clear_session()
     return redirect('/')
 
 
