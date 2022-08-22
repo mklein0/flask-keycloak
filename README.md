@@ -13,5 +13,5 @@ pip install -e .
 
 To run:
 ```shell
-FLASK_DEBUG=1 flask run
+FLASK_DEBUG=1 FLASK_APP=flask_keycloak.__main__:app flask run
 ```

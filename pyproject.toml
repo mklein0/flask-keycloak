@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "flask-authlib-webapp"
+name = "flask-keycloak"
 version = "0.1.0"
 description = ""
-authors = ["Thomas Darimont <thomas.darimont@googlemail.com>"]
+authors = []
 packages = [
-    { include = "*.py" },
+    { include = "flask_keycloak/*.py" },
 ]
 
 [tool.poetry.dependencies]

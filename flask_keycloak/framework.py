@@ -9,13 +9,13 @@ import flask_login
 import requests
 
 from authlib.integrations.flask_client import OAuth, OAuthError
+from authlib.oauth2.rfc6749 import OAuth2Token
 
-# from authlib.oauth2.rfc6749 import OAuth2Token
 # from authlib.integrations.flask_client import token_update
 
 print("Using cacerts from " + certifi.where())
 
-app = flask.Flask(__name__)
+app = flask.Flask('flask_keycloak')
 app.secret_key = '!secret'
 
 issuer = os.getenv('ISSUER', 'https://id.acme.test:8443/auth/realms/acme-demo')
@@ -79,6 +79,14 @@ class FlaskLoginAuthLibUser(flask_login.UserMixin):
         Login Manager should have validated access token, so just get it from the User Session.
         """
         return flask.session['oa_token']['access_token']
+
+    @property
+    def oauth_token(self):
+        # type: (...) -> OAuth2Token
+        """
+        Login Manager should have validated access token, so just get it from the User Session.
+        """
+        return OAuth2Token(flask.session['oa_token'])
 
 
 class FlaskAuthLibLoginManager(flask_login.LoginManager):
@@ -193,62 +201,3 @@ class FlaskAuthLibLoginManager(flask_login.LoginManager):
 
 
 login_manager = FlaskAuthLibLoginManager(app)
-
-
-@app.route('/')
-def index():
-    user = flask_login.current_user._get_current_object(
-    )  # type: t_.Union[FlaskLoginAuthLibUser, flask_login.AnonymousUserMixin]
-
-    pretty_id_token = None
-    pretty_oa_token = None
-    if user.is_authenticated:
-        pretty_id_token = json.dumps(user.user_info, sort_keys=True, indent=4)
-        pretty_oa_token = json.dumps(flask.session['oa_token'], sort_keys=True, indent=4)
-
-    return flask.render_template(
-        'index.html',
-        id_token=pretty_id_token,
-        oa_token=pretty_oa_token,
-        now=int(time.time()),
-    )
-
-
-@app.route('/login')
-def login():
-    redirect_uri = flask.url_for('auth', _external=True)
-    return login_manager.keycloak_authorize_redirect(redirect_uri)
-
-
-@app.route('/auth')
-def auth():
-    login_manager.keycloak_authorize_access_token()
-
-    return flask.redirect('/')
-
-
-@app.route('/api')
-@flask_login.login_required
-def api():
-    """
-    Use logged in user's access token to query user info
-    """
-    access_token = flask_login.current_user.access_token
-
-    user_info_endpoint = f'{issuer}/protocol/openid-connect/userinfo'
-    user_info_response = requests.post(
-        user_info_endpoint,
-        headers={'Authorization': f'Bearer {access_token}', 'Accept': 'application/json'}
-    )
-
-    return user_info_response.text, 200
-
-
-@app.route('/logout')
-def logout():
-    login_manager.keycloak_logout()
-    return flask.redirect('/')
-
-
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8700)
