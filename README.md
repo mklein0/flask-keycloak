@@ -15,3 +15,6 @@ To run:
 ```shell
 FLASK_DEBUG=1 FLASK_APP=flask_keycloak.__main__:app flask run
 ```
+
+Tested using keycloak 19.0.1
+https://www.keycloak.org/docs/latest/authorization_services/index.html#_getting_started_hello_world_enabling_authz_services
